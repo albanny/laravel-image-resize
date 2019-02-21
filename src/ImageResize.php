@@ -24,6 +24,7 @@ class ImageResize
 
     private $width;
     private $height;
+    private $position;
     private $basename;
     private $adapter;
     private $targetPath;
@@ -38,14 +39,14 @@ class ImageResize
         $this->basename     = pathinfo($this->path)['basename'];
     }
 
-    public static function url(string $path = null, $width = 0, $height = 0, $action = 'fit'): string
+    public static function url(string $path = null, $width = 0, $height = 0, $action = 'fit', $position = 'center'): string
     {
         if (!$path || $width < 1 || $height < 1) {
             return '';
         }
 
         $image = new ImageResize(config('image-resize'), $path);
-        $image->settings($width, $height, $action);
+        $image->settings($width, $height, $action, $position );
 
         if (!$image->setTargetMetaData()) {
             return '';
@@ -60,11 +61,12 @@ class ImageResize
         return $image->getUrl();
     }
 
-    private function settings(int $width, int $height, $action = 'fit'): ImageResize
+    private function settings(int $width, int $height, $action = 'fit', $position): ImageResize
     {
         $this->width    = $width;
         $this->height   = $height;
         $this->action   = $action;
+        $this->position   = $position;
         $this->adapter  = Storage::getAdapter();
         $this->setTargetPath();
 
@@ -130,8 +132,11 @@ class ImageResize
     private function setSourceTimeStamp(): bool
     {
         try {
-            $sourceMetaData = Storage::getMetadata($this->path);
+            //$sourceMetaData = Storage::getMetadata($this->path);
+            $sourceMetaData = Storage::disk('public')->getMetadata($this->path);
+            //dd($sourceMetaData);
         } catch (Exception $e) {
+            dd($e);
             return false;
         }
 
@@ -183,18 +188,29 @@ class ImageResize
             return false;
         }
 
+
         switch ($this->action) {
             case 'fit':
+                try {
+                    $image = Image::make(Storage::disk('public')->get($this->path))->fit($this->width, $this->height,  function ($contraint) {
+                    }, $this->position )->encode(Storage::disk('public')->mimeType($this->path));
+                    $this->upload($this->targetPath, (string) $image, Storage::disk('public')->mimeType($this->path));
+                } catch (Exception $e) {
+                    dd($e);
+                    return false;
+                }
+                break;
             case 'resize':
                 try {
-                    $image = Image::make(Storage::get($this->path))
+                    $image = Image::make(Storage::disk('public')->get($this->path))
                         ->{$this->action}($this->width, $this->height, function ($constraint) {
                             $constraint->aspectRatio();
                             $constraint->upsize();
-                        })->encode(Storage::mimeType($this->path));
+                        })->encode(Storage::disk('public')->mimeType($this->path));
 
-                    $this->upload($this->targetPath, (string) $image, Storage::mimeType($this->path));
+                    $this->upload($this->targetPath, (string) $image, Storage::disk('public')->mimeType($this->path));
                 } catch (Exception $e) {
+                    dd($e);
                     return false;
                 }
                 break;
